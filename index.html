@@ -3,79 +3,211 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitHub Pages MQTTS Client</title>
+    <title>GitHub Pages MQTT Web Client</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; }
-        #log { background: #222; color: #00ff00; padding: 15px; border-radius: 5px; height: 300px; overflow-y: scroll; font-family: monospace; }
-        .status { font-weight: bold; color: orange; }
-        .connected { color: green; }
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #f0f2f5; margin: 0; padding: 20px; color: #333; }
+        h2 { margin-top: 0; color: #1a1a1a; }
+        input, button { padding: 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #cccccc; cursor: not-allowed; }
+        
+        .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .full-width { grid-column: span 2; }
+        
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+        .row { display: flex; gap: 15px; }
+        .flex-1 { flex: 1; }
+        
+        .status-banner { padding: 10px; border-radius: 6px; font-weight: bold; margin-bottom: 15px; text-align: center; }
+        .disconnected-bg { background: #ffebee; color: #c62828; }
+        .connecting-bg { background: #fff3e0; color: #ef6c00; }
+        .connected-bg { background: #e8f5e9; color: #2e7d32; }
+
+        .panel { background: #1e1e1e; color: #a9ffaf; padding: 15px; border-radius: 6px; height: 250px; overflow-y: auto; font-family: 'Courier New', Courier, monospace; font-size: 13px; }
+        .outgoing { color: #5ccfe6; }
+        .incoming { color: #ecc48d; }
+        .system { color: #888; font-style: italic; }
     </style>
 </head>
 <body>
 
-    <h2>GitHub Pages Secure MQTT Client</h2>
-    <p>Status: <span id="status" class="status">Connecting...</span></p>
-    
-    <h3>Live Console Logs:</h3>
-    <div id="log"></div>
+    <div class="card full-width">
+        <h2>🛠️ interactive MQTT Web Client</h2>
+        <div id="statusBanner" class="status-banner disconnected-bg">Disconnected</div>
+    </div>
+
+    <div class="grid-container">
+        <div class="card">
+            <h3>1. Broker Connection</h3>
+            <div class="row">
+                <div class="form-group flex-1">
+                    <label>Broker URL (Must start with wss://)</label>
+                    <input type="text" id="broker" value="wss://broker.emqx.io:8084/mqtt">
+                </div>
+            </div>
+            <div class="row">
+                <div class="form-group flex-1">
+                    <label>Username (Optional)</label>
+                    <input type="text" id="username" placeholder="Leave blank if none">
+                </div>
+                <div class="form-group flex-1">
+                    <label>Password (Optional)</label>
+                    <input type="password" id="password" placeholder="Leave blank if none">
+                </div>
+            </div>
+            <div class="row" style="margin-top: 10px;">
+                <button id="connectBtn" class="flex-1" onclick="toggleConnection()">Connect</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>2. Messaging & Topics</h3>
+            <div class="form-group">
+                <label>Subscribe Topic</label>
+                <div class="row">
+                    <input type="text" id="subTopic" class="flex-1" value="github/pages/demo">
+                    <button id="subBtn" onclick="subscribeTopic()" disabled>Subscribe</button>
+                </div>
+            </div>
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+            <div class="form-group">
+                <label>Publish Topic</label>
+                <input type="text" id="pubTopic" value="github/pages/demo">
+            </div>
+            <div class="form-group">
+                <label>Payload (Message)</label>
+                <input type="text" id="pubPayload" value="{'status': 'active', 'value': 24}">
+            </div>
+            <button id="pubBtn" style="width: 100%;" onclick="publishMessage()" disabled>Publish Message</button>
+        </div>
+
+        <div class="card">
+            <h3>📤 Outgoing Data (Published)</h3>
+            <div id="outgoingPanel" class="panel"></div>
+        </div>
+
+        <div class="card">
+            <h3>📥 Incoming Data (Received)</h3>
+            <div id="incomingPanel" class="panel"></div>
+        </div>
+    </div>
 
     <script>
-        const logDiv = document.getElementById('log');
-        const statusSpan = document.getElementById('status');
+        let client = null;
+        
+        // DOM Elements
+        const brokerInput = document.getElementById('broker');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const connectBtn = document.getElementById('connectBtn');
+        const statusBanner = document.getElementById('statusBanner');
+        
+        const subTopicInput = document.getElementById('subTopic');
+        const subBtn = document.getElementById('subBtn');
+        const pubTopicInput = document.getElementById('pubTopic');
+        const pubPayloadInput = document.getElementById('pubPayload');
+        const pubBtn = document.getElementById('pubBtn');
+        
+        const outgoingPanel = document.getElementById('outgoingPanel');
+        const incomingPanel = document.getElementById('incomingPanel');
 
-        function log(message) {
-            logDiv.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}<br>`;
-            logDiv.scrollTop = logDiv.scrollHeight;
+        function logPanel(panel, type, msg) {
+            const time = new Date().toLocaleTimeString();
+            panel.innerHTML += `<div class="${type}">[${time}] ${msg}</div>`;
+            panel.scrollTop = panel.scrollHeight;
         }
 
-        // --- CONFIGURATION ---
-        // We use the public EMQX broker for this example (Uses WSS on port 8084)
-        const brokerUrl = 'wss://broker.emqx.io:8084/mqtt'; 
-        
-        const options = {
-            clientId: 'gh_pages_' + Math.random().toString(16).substr(2, 8),
-            keepalive: 60,
-            clean: true,
-            // If your broker requires auth, uncomment below:
-            // username: 'your_username',
-            // password: 'your_password'
-        };
+        function toggleConnection() {
+            if (client && client.connected) {
+                // Disconnect logic
+                client.end();
+                return;
+            }
 
-        log('Initializing connection to: ' + brokerUrl);
-        const client = mqtt.connect(brokerUrl, options);
+            // UI Feedback for connecting
+            statusBanner.innerText = "Connecting...";
+            statusBanner.className = "status-banner connecting-bg";
+            connectBtn.disabled = true;
 
-        // --- MQTT EVENTS ---
-        client.on('connect', () => {
-            statusSpan.innerText = 'Connected ✔';
-            statusSpan.className = 'status connected';
-            log('🔒 Connected successfully via Secure WebSockets!');
+            const options = {
+                clientId: 'web_client_' + Math.random().toString(16).substr(2, 8),
+                clean: true,
+                connectTimeout: 5000
+            };
 
-            // Subscribe to a test topic
-            const topic = 'github/pages/test';
+            if (usernameInput.value.trim()) options.username = usernameInput.value.trim();
+            if (passwordInput.value.trim()) options.password = passwordInput.value.trim();
+
+            // Connect
+            client = mqtt.connect(brokerInput.value.trim(), options);
+
+            // Event Handlers
+            client.on('connect', () => {
+                statusBanner.innerText = "Connected ✔";
+                statusBanner.className = "status-banner connected-bg";
+                connectBtn.innerText = "Disconnect";
+                connectBtn.disabled = false;
+                
+                // Enable action buttons
+                subBtn.disabled = false;
+                pubBtn.disabled = false;
+                
+                logPanel(incomingPanel, 'system', '🔒 Connected to broker securely.');
+            });
+
+            client.on('message', (topic, message) => {
+                logPanel(incomingPanel, 'incoming', `Topic [${topic}]: ${message.toString()}`);
+            });
+
+            client.on('close', () => {
+                statusBanner.innerText = "Disconnected";
+                statusBanner.className = "status-banner disconnected-bg";
+                connectBtn.innerText = "Connect";
+                connectBtn.disabled = false;
+                
+                // Disable action buttons
+                subBtn.disabled = true;
+                pubBtn.disabled = true;
+                
+                logPanel(incomingPanel, 'system', '🔌 Disconnected from broker.');
+            });
+
+            client.on('error', (err) => {
+                logPanel(incomingPanel, 'system', `❌ Error: ${err.message}`);
+            });
+        }
+
+        function subscribeTopic() {
+            const topic = subTopicInput.value.trim();
+            if (!topic) return;
+            
             client.subscribe(topic, (err) => {
                 if (!err) {
-                    log(`Subscribed to topic: ${topic}`);
-                    // Publish a test message
-                    client.publish(topic, 'Hello from GitHub Pages!');
+                    logPanel(incomingPanel, 'system', `✔ Subscribed to: ${topic}`);
+                } else {
+                    logPanel(incomingPanel, 'system', `❌ Subscription failed for: ${topic}`);
                 }
             });
-        });
+        }
 
-        client.on('message', (topic, message) => {
-            log(`📥 Received from <strong>${topic}</strong>: ${message.toString()}`);
-        });
+        function publishMessage() {
+            const topic = pubTopicInput.value.trim();
+            const payload = pubPayloadInput.value;
+            
+            if (!topic) return;
 
-        client.on('error', (err) => {
-            log(`❌ Error: ${err.message}`);
-            statusSpan.innerText = 'Connection Error';
-        });
-
-        client.on('close', () => {
-            log('🔌 Connection closed.');
-            statusSpan.innerText = 'Disconnected';
-            statusSpan.className = 'status';
-        });
+            client.publish(topic, payload, (err) => {
+                if (!err) {
+                    logPanel(outgoingPanel, 'outgoing', `Topic [${topic}]: ${payload}`);
+                } else {
+                    logPanel(outgoingPanel, 'system', `❌ Failed to publish to ${topic}`);
+                }
+            });
+        }
     </script>
 </body>
 </html>
