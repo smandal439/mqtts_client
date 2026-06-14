@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Pages MQTTS Client</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; }
+        #log { background: #222; color: #00ff00; padding: 15px; border-radius: 5px; height: 300px; overflow-y: scroll; font-family: monospace; }
+        .status { font-weight: bold; color: orange; }
+        .connected { color: green; }
+    </style>
+</head>
+<body>
+
+    <h2>GitHub Pages Secure MQTT Client</h2>
+    <p>Status: <span id="status" class="status">Connecting...</span></p>
+    
+    <h3>Live Console Logs:</h3>
+    <div id="log"></div>
+
+    <script>
+        const logDiv = document.getElementById('log');
+        const statusSpan = document.getElementById('status');
+
+        function log(message) {
+            logDiv.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}<br>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // --- CONFIGURATION ---
+        // We use the public EMQX broker for this example (Uses WSS on port 8084)
+        const brokerUrl = 'wss://broker.emqx.io:8084/mqtt'; 
+        
+        const options = {
+            clientId: 'gh_pages_' + Math.random().toString(16).substr(2, 8),
+            keepalive: 60,
+            clean: true,
+            // If your broker requires auth, uncomment below:
+            // username: 'your_username',
+            // password: 'your_password'
+        };
+
+        log('Initializing connection to: ' + brokerUrl);
+        const client = mqtt.connect(brokerUrl, options);
+
+        // --- MQTT EVENTS ---
+        client.on('connect', () => {
+            statusSpan.innerText = 'Connected ✔';
+            statusSpan.className = 'status connected';
+            log('🔒 Connected successfully via Secure WebSockets!');
+
+            // Subscribe to a test topic
+            const topic = 'github/pages/test';
+            client.subscribe(topic, (err) => {
+                if (!err) {
+                    log(`Subscribed to topic: ${topic}`);
+                    // Publish a test message
+                    client.publish(topic, 'Hello from GitHub Pages!');
+                }
+            });
+        });
+
+        client.on('message', (topic, message) => {
+            log(`📥 Received from <strong>${topic}</strong>: ${message.toString()}`);
+        });
+
+        client.on('error', (err) => {
+            log(`❌ Error: ${err.message}`);
+            statusSpan.innerText = 'Connection Error';
+        });
+
+        client.on('close', () => {
+            log('🔌 Connection closed.');
+            statusSpan.innerText = 'Disconnected';
+            statusSpan.className = 'status';
+        });
+    </script>
+</body>
+</html>
