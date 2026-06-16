@@ -77,9 +77,41 @@
                             onclick="formatJsonPayload()">Format JSON</button>
                     </div>
                     <textarea id="pubPayload">{
-    "status": "active",
-    "value": 24
-}</textarea>
+  "op": 3,
+  "to": "R6579",
+  "fr": "Sdev972",
+  "rqi": "Get",
+  "rvi": "3",
+  "pc": {
+    "hd:wgps": {
+      "fw": "ABCD1234",
+      "pkSt": "L",
+      "dgt": "2023-12-12:10:15:34",
+      "lat": "44",
+      "latD": "N",
+      "lng": "88",
+      "lngD": "W",
+      "spd": 100.00,
+      "noS": 34,
+      "hdop": 1,
+      "pdop": 1,
+      "alt": 4000,
+      "mcc": "1234",
+      "mnc": "1234",
+      "lac": "1234",
+      "cellId": "1234",
+      "rssi": 31,
+      "ber": 7,
+      "btPer": 44,
+      "mvnt": 1,
+      "tmp": 55.55,
+      "dst": "2023-12-12:10:15:34",
+      "cnt": 100,
+      "recF": 1
+    }
+  }
+}
+</textarea>
                 </div>
                 <button id="pubBtn" style="width: 100%;" onclick="publishMessage()" disabled>Publish Message</button>
             </div>
